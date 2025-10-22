@@ -1,1 +1,75 @@
-.github/workflows/ci-cd-pipeline.yml
+name: CI/CD Pipeline - Node.js to Docker Hub
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push events to the main branch
+  push:
+    branches: [ main ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Define environment variables
+env:
+  DOCKER_IMAGE_NAME: nodejs-demo-app
+  DOCKER_REPO: abhinayapathuri/nodejs-demo-app # IMPORTANT: Change this to your actual Docker Hub username
+
+jobs:
+  # --------------------
+  # 1. CI: Build and Test Job
+  # --------------------
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Tests (CI Phase)
+        # This executes the 'test' script defined in package.json
+        run: npm test
+
+  # --------------------
+  # 2. CD: Docker Build and Push Job
+  # --------------------
+  docker-build-and-push:
+    # Requires the CI job to pass before starting
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Log in to Docker Hub using stored secrets
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }} # Needs to be set in GitHub Secrets
+          password: ${{ secrets.DOCKER_PASSWORD }} # Needs to be set in GitHub Secrets
+
+      # Extract metadata (tags, labels) for Docker image
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REPO }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      # Build and push the Docker image
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # Use metadata tags (latest and commit SHA)
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
